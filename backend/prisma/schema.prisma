@@ -1,0 +1,48 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+model User {
+  id           String        @id @default(uuid()) @db.Uuid
+  email        String        @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  appointmentsCreated Appointment[] @relation("CreatorAppointments")
+  appointmentsInvited Appointment[] @relation("InviteeAppointments")
+}
+
+model Appointment {
+  id        String   @id @default(uuid()) @db.Uuid
+  title     String
+  startsAt  DateTime
+  endsAt    DateTime
+  status    AppointmentStatus @default(PENDING)
+  notes     String?
+
+  creatorId String   @db.Uuid
+  inviteeId String   @db.Uuid
+  creator   User     @relation("CreatorAppointments", fields: [creatorId], references: [id])
+  invitee   User     @relation("InviteeAppointments", fields: [inviteeId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([creatorId])
+  @@index([inviteeId])
+  @@index([startsAt])
+  @@unique([creatorId, startsAt, endsAt])
+}
