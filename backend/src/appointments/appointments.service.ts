@@ -3,22 +3,24 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 import { UsersService } from '../users/users.service';
+import { NotificationsService } from 'src/notifications/notifications.service';
 
 @Injectable()
 export class AppointmentsService {
-  constructor(
-    private prisma: PrismaService,
-    private users: UsersService,
-  ) {}
+    constructor(
+        private prisma: PrismaService,
+        private users: UsersService,
+        private notifications: NotificationsService,
+    ) {}
 
-  // -- yardımcı: çakışma var mı?
-  private async hasOverlap(params: {
-    startsAt: Date;
-    endsAt: Date;
-    creatorId: string;
-    inviteeId: string;
-    excludeId?: string;
-  }) {
+    // -- yardımcı: çakışma var mı?
+    private async hasOverlap(params: {
+        startsAt: Date;
+        endsAt: Date;
+        creatorId: string;
+        inviteeId: string;
+        excludeId?: string;
+    }) {
     const { startsAt, endsAt, creatorId, inviteeId, excludeId } = params;
 
     return this.prisma.appointment.findFirst({
@@ -58,7 +60,7 @@ export class AppointmentsService {
     });
     if (overlap) throw new BadRequestException('OVERLAP');
 
-    return this.prisma.appointment.create({
+    const created = await this.prisma.appointment.create({
       data: {
         title: dto.title,
         startsAt,
@@ -69,6 +71,9 @@ export class AppointmentsService {
         inviteeId: invitee.id,
       },
     });
+    this.notifications.appointmentCreated(created);
+
+    return created;
   }
 
   // Kullanıcının dahil olduğu randevular
@@ -108,7 +113,7 @@ export class AppointmentsService {
     });
     if (overlap) throw new BadRequestException('OVERLAP');
 
-    return this.prisma.appointment.update({
+    const updated = await this.prisma.appointment.update({
       where: { id },
       data: {
         title: dto.title ?? existing.title,
@@ -118,6 +123,9 @@ export class AppointmentsService {
         status: dto.status ?? existing.status,
       },
     });
+    this.notifications.appointmentUpdated(updated);
+
+    return updated;
   }
 
   async cancel(currentUserId: string, id: string) {
@@ -127,10 +135,13 @@ export class AppointmentsService {
       throw new ForbiddenException('Sadece oluşturan iptal edebilir');
     }
 
-    return this.prisma.appointment.update({
+    const cancelled = await this.prisma.appointment.update({
       where: { id },
       data: { status: 'CANCELLED' },
     });
+    this.notifications.appointmentCancelled(cancelled);
+
+    return cancelled;
   }
 
   async remove(currentUserId: string, id: string) {
@@ -141,6 +152,8 @@ export class AppointmentsService {
       throw new ForbiddenException('Sadece oluşturan silebilir');
     }
     await this.prisma.appointment.delete({ where: { id } });
+    // <<< OLAY NOKTASI: silme bildirimi (silinmiş kaydı gönderemeyiz; id yeterli)
+    this.notifications.appointmentDeleted(existing.creatorId, existing.inviteeId, { id });
     return { ok: true };
   }
 }
