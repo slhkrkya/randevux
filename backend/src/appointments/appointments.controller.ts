@@ -14,6 +14,12 @@ export class AppointmentsController {
     return this.service.create(req.user.id, dto);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get(':id')
+  findOne(@Req() req: any, @Param('id') id: string){
+    return this.service.findOne(req.user.id, id);
+  }
+  
   @Get()
   findMine(@Req() req: any) {
     return this.service.findMine(req.user.id);

@@ -40,8 +40,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               t.variant === 'success' && 'border-emerald-500/30',
               t.variant === 'warning' && 'border-amber-500/30',
               t.variant === 'error'   && 'border-rose-500/30',
-            ].filter(Boolean).join(' ')}
-          >
+            ].filter(Boolean).join(' ')}>
             <div className="text-sm font-semibold leading-tight">{t.title}</div>
             {t.description && (
               <div className="mt-1 text-xs opacity-80">{t.description}</div>

@@ -11,7 +11,7 @@ export class UsersService {
       where: { email: email.toLowerCase() },
     });
   }
-
+  
   async createUser(params: { email: string; password: string; name: string }) {
     const email = params.email.toLowerCase();
     const passwordHash = await bcrypt.hash(params.password, 10);

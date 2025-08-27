@@ -152,8 +152,17 @@ export class AppointmentsService {
       throw new ForbiddenException('Sadece oluşturan silebilir');
     }
     await this.prisma.appointment.delete({ where: { id } });
-    // <<< OLAY NOKTASI: silme bildirimi (silinmiş kaydı gönderemeyiz; id yeterli)
-    this.notifications.appointmentDeleted(existing.creatorId, existing.inviteeId, { id });
+    this.notifications.appointmentDeleted(existing.creatorId, existing.inviteeId, { id, by: currentUserId });
     return { ok: true };
+  }
+
+  async findOne(currentUserId: string, id: string) {
+    const appt = await this.prisma.appointment.findUnique({ where: { id } });
+    if (!appt) throw new NotFoundException('Randevu bulunamadı');
+    // sadece creator veya invitee erişebilsin
+    if (appt.creatorId !== currentUserId && appt.inviteeId !== currentUserId) {
+        throw new ForbiddenException('Erişim yok');
+    }
+    return appt;
   }
 }

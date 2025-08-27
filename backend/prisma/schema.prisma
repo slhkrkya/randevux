@@ -15,11 +15,11 @@ enum AppointmentStatus {
 
 model User {
   id           String        @id @default(uuid()) @db.Uuid
-  email        String        @unique
+  email        String        @unique @db.Citext
   passwordHash String
   name         String
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt       @db.Timestamptz(6)
 
   appointmentsCreated Appointment[] @relation("CreatorAppointments")
   appointmentsInvited Appointment[] @relation("InviteeAppointments")
@@ -28,8 +28,8 @@ model User {
 model Appointment {
   id        String   @id @default(uuid()) @db.Uuid
   title     String
-  startsAt  DateTime
-  endsAt    DateTime
+  startsAt  DateTime @db.Timestamptz(6)
+  endsAt    DateTime @db.Timestamptz(6)
   status    AppointmentStatus @default(PENDING)
   notes     String?
 
@@ -38,11 +38,11 @@ model Appointment {
   creator   User     @relation("CreatorAppointments", fields: [creatorId], references: [id])
   invitee   User     @relation("InviteeAppointments", fields: [inviteeId], references: [id])
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt       @db.Timestamptz(6)
 
-  @@index([creatorId])
-  @@index([inviteeId])
-  @@index([startsAt])
+  @@index([creatorId, startsAt])
+  @@index([inviteeId, startsAt])
+
   @@unique([creatorId, startsAt, endsAt])
 }
