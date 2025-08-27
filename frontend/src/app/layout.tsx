@@ -13,6 +13,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <a href="/" className="font-semibold">RandevuX</a>
             <nav className="flex items-center gap-3">
               <a href="/appointments" className="underline">Randevular</a>
+              <a href="/profile" className="underline">Profil</a>
               <a href="/login" className="underline">Giriş</a>
               <a href="/register" className="underline">Kayıt</a>
               <LogoutButton />

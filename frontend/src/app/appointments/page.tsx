@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { getUser } from '../../../lib/auth';
+import { bus } from '../../../lib/bus';
 import { useToast } from '../../../lib/toast';
 import { api, toISO } from '../../../lib/api';
-import { useRouter } from 'next/navigation';
-import { bus } from '../../../lib/bus';
-import Link from 'next/link';
 
 type Appointment = {
   id: string;
@@ -24,35 +25,35 @@ export default function AppointmentsPage() {
   const router = useRouter();
   const { push } = useToast();
 
-  // 1) Mount gate (SSR/CSR farkını önlemek için)
+  // Mount gate (SSR/CSR farkını önlemek için)
   const [mounted, setMounted] = useState(false);
 
-  // 2) Diğer TÜM hook'lar return'dan ÖNCE (hook sırası sabit kalsın)
+  // Liste + form state
   const [items, setItems] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Form state
   const [title, setTitle] = useState('');
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
   const [inviteeEmail, setInviteeEmail] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Token'ı güvenli şekilde oku (SSR'da window yok)
+  // Token ve kullanıcı bilgisi
   const token = useMemo(
     () => (typeof window !== 'undefined' ? localStorage.getItem('token') || '' : ''),
     []
   );
+  const me = useMemo(() => getUser(), []);
 
+  // Mount
   useEffect(() => { setMounted(true); }, []);
 
-  // 5) GUARD: mounted + token yoksa /login'e yönlendir
+  // Guard: token yoksa login'e
   useEffect(() => {
-    if (mounted && !token) {
-      router.replace('/login');
-    }
+    if (mounted && !token) router.replace('/login');
   }, [mounted, token, router]);
-  // 6) Listeyi çek (sadece token varsa)
+
+  // Listeyi çek
   useEffect(() => {
     if (!token) { setLoading(false); return; }
     let ignore = false;
@@ -68,37 +69,50 @@ export default function AppointmentsPage() {
     })();
     return () => { ignore = true; };
   }, [token, push]);
-  
+
+  // Realtime senkron (bus)
   useEffect(() => {
     if (!mounted || !token) return;
     const off1 = bus.on('appointment.created', (a) => {
-        setItems(prev => {
-        if (prev.some(x => x.id === a.id)) return prev; // duplicate koruması
+      setItems(prev => {
+        if (prev.some(x => x.id === a.id)) return prev;
         return [...prev, a].sort((x,y)=>x.startsAt.localeCompare(y.startsAt));
-        });
+      });
     });
-    const off2 = bus.on('appointment.updated', (a) => {
-        setItems(prev => prev.map(x => x.id === a.id ? a : x));
-    });
-    const off3 = bus.on('appointment.cancelled', (a) => {
-        setItems(prev => prev.map(x => x.id === a.id ? a : x));
-    });
-    const off4 = bus.on('appointment.deleted', ({ id }) => {
-        setItems(prev => prev.filter(x => x.id !== id));
-    });
+    const off2 = bus.on('appointment.updated',   (a) => setItems(prev => prev.map(x => x.id === a.id ? a : x)));
+    const off3 = bus.on('appointment.cancelled', (a) => setItems(prev => prev.map(x => x.id === a.id ? a : x)));
+    const off4 = bus.on('appointment.deleted',   ({ id }) => setItems(prev => prev.filter(x => x.id !== id)));
     return () => { off1(); off2(); off3(); off4(); };
   }, [mounted, token]);
 
-  // 7) SSR ile ilk client çıktısını eşitle: redirect işlemi tamamlanana kadar hiçbir şey çizme
+  // İlk renderda HTML çizme; redirect/sync bitsin
   if (!mounted || !token) return null;
 
-  // --- UI yardımcı ---
+  // Helpers
   const toLocal = (s: string) => {
     try { return new Date(s).toLocaleString(); } catch { return s; }
   };
 
   // --- Aksiyonlar ---
+
   async function createAppointment() {
+    // ---- B) FORM DOĞRULAMA ----
+    if (!title.trim() || !inviteeEmail.trim() || !startsAt || !endsAt) {
+      push({ title: 'Eksik bilgi', description: 'Tüm alanları doldurun', variant: 'warning' });
+      return;
+    }
+    const emailOk = /\S+@\S+\.\S+/.test(inviteeEmail);
+    if (!emailOk) {
+      push({ title: 'E-posta hatalı', description: 'Davetli e-posta formatını kontrol edin', variant: 'warning' });
+      return;
+    }
+    const s = new Date(startsAt), e = new Date(endsAt);
+    if (!(s < e)) {
+      push({ title: 'Zaman hatası', description: 'Başlangıç bitişten önce olmalı', variant: 'error' });
+      return;
+    }
+
+    // ---- API ----
     try {
       const payload = {
         title,
@@ -186,30 +200,40 @@ export default function AppointmentsPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="font-medium">
-                        <Link href={`/appointments/${appt.id}`} className="underline hover:opacity-80">
-                            {appt.title}
-                        </Link>
+                      <Link href={`/appointments/${appt.id}`} className="underline hover:opacity-80">
+                        {appt.title}
+                      </Link>
                     </div>
                     <div className="text-xs opacity-75">
                       {toLocal(appt.startsAt)} — {toLocal(appt.endsAt)}
                     </div>
+
+                    {/* A) Yetki etiketi */}
+                    <div className="mt-1 text-xs opacity-80">
+                      {me?.id === appt.creatorId ? 'Siz (oluşturan)' : 'Davetli olarak'}
+                    </div>
+
                     <div className="mt-1 text-xs">
                       <span className="px-2 py-0.5 rounded-full border text-[11px]">
                         {appt.status}
                       </span>
                     </div>
                   </div>
+
+                  {/* A) Butonlar sadece oluşturan için */}
                   <div className="flex items-center gap-2">
-                    {appt.status !== 'CANCELLED' && (
+                    {me?.id === appt.creatorId && appt.status !== 'CANCELLED' && (
                       <button onClick={() => cancelAppointment(appt.id)}
                               className="rounded-full h-8 px-3 text-sm border hover:bg-amber-500/10">
                         İptal
                       </button>
                     )}
-                    <button onClick={() => deleteAppointment(appt.id)}
-                            className="rounded-full h-8 px-3 text-sm border hover:bg-rose-500/10">
-                      Sil
-                    </button>
+                    {me?.id === appt.creatorId && (
+                      <button onClick={() => deleteAppointment(appt.id)}
+                              className="rounded-full h-8 px-3 text-sm border hover:bg-rose-500/10">
+                        Sil
+                      </button>
+                    )}
                   </div>
                 </div>
                 {appt.notes && <div className="mt-2 text-sm opacity-80">{appt.notes}</div>}

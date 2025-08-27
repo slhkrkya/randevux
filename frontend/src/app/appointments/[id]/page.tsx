@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import VideoCall from './VideoCall';
 import { api } from '../../../../lib/api';
 import { useToast } from '../../../../lib/toast';
 import { bus } from '../../../../lib/bus';
+import { getUser } from '../../../../lib/auth';
 
 type Appointment = {
   id: string; title: string; startsAt: string; endsAt: string;
@@ -26,6 +28,7 @@ export default function AppointmentDetailPage() {
     () => (typeof window !== 'undefined' ? localStorage.getItem('token') || '' : ''),
     []
   );
+  const me = useMemo(() => getUser(), []);
 
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => {
@@ -55,9 +58,9 @@ export default function AppointmentDetailPage() {
   // ws sync
   useEffect(() => {
     if (!mounted || !token || !id) return;
-    const offU1 = bus.on('appointment.updated', (a) => { if (a.id === id) setAppt(a); });
+    const offU1 = bus.on('appointment.updated',   (a) => { if (a.id === id) setAppt(a); });
     const offU2 = bus.on('appointment.cancelled', (a) => { if (a.id === id) setAppt(a); });
-    const offD  = bus.on('appointment.deleted', ({ id: delId }) => {
+    const offD  = bus.on('appointment.deleted',   ({ id: delId }) => {
       if (delId === id) {
         push({ title: 'Randevu silindi', description: 'Listeye dönüldü', variant: 'warning' });
         router.replace('/appointments');
@@ -68,10 +71,53 @@ export default function AppointmentDetailPage() {
 
   if (!mounted || !token) return null;
 
+  // Helpers
   const toLocal = (s: string) => { try { return new Date(s).toLocaleString(); } catch { return s; } };
+  const isOwner = appt && me?.id === appt.creatorId;
+
+  function toIcsDate(iso: string) {
+    // "2025-08-27T07:00:00.000Z" -> "20250827T070000Z"
+    return new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+  }
+  function download(filename: string, text: string) {
+    const blob = new Blob([text], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    a.remove(); URL.revokeObjectURL(url);
+  }
+  function downloadIcs() {
+    if (!appt) return;
+    const dtStart = toIcsDate(appt.startsAt);
+    const dtEnd   = toIcsDate(appt.endsAt);
+    const uid = appt.id;
+    const summary = (appt.title || 'RandevuX').replace(/\n/g,' ');
+    const desc = (appt.notes || '').replace(/\n/g,' ');
+    const ics =
+        `BEGIN:VCALENDAR
+        VERSION:2.0
+        PRODID:-//RandevuX//TR
+        CALSCALE:GREGORIAN
+        METHOD:PUBLISH
+        BEGIN:VEVENT
+        UID:${uid}
+        DTSTAMP:${toIcsDate(new Date().toISOString())}
+        DTSTART:${dtStart}
+        DTEND:${dtEnd}
+        SUMMARY:${summary}
+        DESCRIPTION:${desc}
+        END:VEVENT
+        END:VCALENDAR`;
+    download(`appointment-${uid}.ics`, ics);
+  }
 
   async function cancel() {
     if (!appt) return;
+    if (!(me?.id === appt.creatorId)) {
+    push({ title: 'Yetki yok', description: 'Sadece oluşturan iptal edebilir', variant: 'warning' });
+    return;
+    }
     try {
       const updated = await api<Appointment>(`/appointments/${id}/cancel`, { method: 'POST', token });
       setAppt(updated);
@@ -82,6 +128,11 @@ export default function AppointmentDetailPage() {
   }
 
   async function del() {
+    if (!(me?.id)) return;
+    if (!(me?.id === appt?.creatorId)) {
+        push({ title: 'Yetki yok', description: 'Sadece oluşturan silebilir', variant: 'warning' });
+        return;
+    }
     try {
       await api(`/appointments/${id}`, { method: 'DELETE', token });
       push({ title: 'Randevu silindi', description: `id: ${id}`, variant: 'warning' });
@@ -109,16 +160,33 @@ export default function AppointmentDetailPage() {
           {appt.notes && <div className="mt-3 text-sm">{appt.notes}</div>}
 
           <div className="mt-5 flex items-center gap-2">
-            {appt.status !== 'CANCELLED' && (
-              <button onClick={cancel} className="rounded-full h-8 px-3 text-sm border hover:bg-amber-500/10">
-                İptal
-              </button>
-            )}
-            <button onClick={del} className="rounded-full h-8 px-3 text-sm border hover:bg-rose-500/10">
-              Sil
+            <button onClick={downloadIcs} className="rounded-full h-8 px-3 text-sm border hover:bg-slate-500/10">
+                Takvime Ekle (.ics)
             </button>
+            {isOwner && appt.status !== 'CANCELLED' && (
+                <button onClick={cancel} className="rounded-full h-8 px-3 text-sm border hover:bg-amber-500/10">
+                İptal
+                </button>
+            )}
+            {isOwner && (
+                <button onClick={del} className="rounded-full h-8 px-3 text-sm border hover:bg-rose-500/10">
+                Sil
+                </button>
+            )}
+            {!isOwner && (
+                <span className="ml-1 text-xs opacity-60">
+                Bu randevuyu yalnızca oluşturan yönetebilir
+                </span>
+            )}
             <a href="/appointments" className="ml-auto underline text-sm">Listeye dön</a>
           </div>
+
+          {/* Görüntülü görüşme (normal mod) */}
+          <VideoCall
+            appointmentId={id}
+            startsAt={appt.startsAt}
+            endsAt={appt.endsAt}
+          />
         </div>
       )}
     </div>
