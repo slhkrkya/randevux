@@ -13,7 +13,7 @@ async function bootstrap() {
 
   // CORS: Next dev origin'ine izin ver
   app.enableCors({
-    origin: 'http://localhost:3000',
+    origin:true,   //origin: 'http://localhost:3000',
     credentials: true,
   });
 
@@ -26,9 +26,8 @@ async function bootstrap() {
   const config = app.get(ConfigService);
   const jwt = app.get(JwtService);
   app.useWebSocketAdapter(new JwtWsAdapter(app, config, jwt));
-
-  const port = Number(process.env.PORT) || 4000;
-
+  
+  const port = process.env.PORT ? Number(process.env.PORT) : 3001;
   await app.listen(port);
 }
 

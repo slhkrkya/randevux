@@ -31,6 +31,17 @@ export async function api<T = any>(path: string, opts: FetchOpts = {}): Promise<
   return data as T;
 }
 
+export const API_URL = process.env.NEXT_PUBLIC_API_URL!;
+// Tüm isteklerde aynı tabanı kullanımı
+export async function apiGet(path: string, init?: RequestInit) {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init,
+    credentials: 'include',
+    cache: 'no-store',
+  });
+  if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
+  return res.json();
+}
 // Yardımcı: <input type="datetime-local"> -> ISO string
 export function toISO(dtLocal: string) {
   return new Date(dtLocal).toISOString(); // örn: "2025-08-27T07:00:00.000Z"

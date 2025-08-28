@@ -1,9 +1,34 @@
 import Image from "next/image";
 
-export default function Home() {
+export default async function Home() {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
+  let health: any = null;
+  let error: string | null = null;
+
+  try {
+    const res = await fetch(`${API_URL}/health`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`Health failed: ${res.status}`);
+    health = await res.json();
+  } catch (e: any) {
+    error = e?.message ?? "Health check failed";
+  }
+
   return (
     <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
       <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
+        {/* --- Health kutusu --- */}
+        <div className="w-full rounded-xl border border-black/10 dark:border-white/15 p-4">
+          <div className="text-sm font-medium">Backend Health</div>
+          {error ? (
+            <p className="mt-2 text-sm text-red-600">Hata: {error}</p>
+          ) : (
+            <pre className="mt-2 text-xs overflow-auto">
+              {JSON.stringify(health, null, 2)}
+            </pre>
+          )}
+        </div>
+
         <Image
           className="dark:invert"
           src="/next.svg"
@@ -51,6 +76,7 @@ export default function Home() {
           </a>
         </div>
       </main>
+
       <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
         <a
           className="flex items-center gap-2 hover:underline hover:underline-offset-4"
